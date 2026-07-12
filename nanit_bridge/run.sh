@@ -1,4 +1,4 @@
-#!/usr/bin/env bashio
+#!/usr/bin/with-contenv bashio
 # ==============================================================================
 # Nanit Bridge add-on: map Supervisor options -> NANIT_* environment variables
 # and launch the bridge. Upstream source: daleiii/nanit-web @ 88f3d37 (vendored).

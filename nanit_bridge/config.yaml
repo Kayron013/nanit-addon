@@ -1,5 +1,5 @@
 name: Nanit Bridge
-version: "1.0.1"
+version: "1.0.2"
 slug: nanit_bridge
 description: >-
   Local RTMP + MQTT bridge for Nanit baby monitors. Vendored build of
@@ -11,6 +11,8 @@ arch:
   - aarch64
 init: false
 startup: services
+# Needed for /network/info (RTMP listen-IP auto-detection); role stays default.
+hassio_api: true
 boot: auto
 watchdog: tcp://[HOST]:[PORT:8080]
 ports:
