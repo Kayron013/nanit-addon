@@ -3,6 +3,7 @@ package mqtt
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
@@ -21,6 +22,7 @@ type Connection struct {
 	client                    MQTT.Client
 	sendLightCommandHandler   SendLightCommandHandler
 	sendStandbyCommandHandler SendStandbyCommandHandler
+	babyResolver              BabyResolver
 }
 
 // NewConnection - constructor
@@ -162,7 +164,23 @@ func runMqtt(conn *Connection, attempt utils.AttemptContext) {
 
 	log.Info().Str("broker_url", conn.Opts.BrokerURL).Msg("Successfully connected to MQTT broker")
 
+	// Discovery configs are published once per baby per connection, lazily on
+	// the first state update (state notifications run on separate goroutines).
+	var discoveryMutex sync.Mutex
+	discoveryAnnounced := make(map[string]bool)
+
 	unsubscribe := conn.StateManager.Subscribe(func(babyUID string, state baby.State) {
+		if conn.Opts.DiscoveryEnabled {
+			discoveryMutex.Lock()
+			firstSighting := !discoveryAnnounced[babyUID]
+			discoveryAnnounced[babyUID] = true
+			discoveryMutex.Unlock()
+
+			if firstSighting {
+				conn.publishDiscoveryConfigs(babyUID)
+			}
+		}
+
 		publish := func(key string, value interface{}) {
 			topic := fmt.Sprintf("%v/babies/%v/%v", conn.Opts.TopicPrefix, babyUID, key)
 			log.Trace().Str("topic", topic).Interface("value", value).Msg("MQTT publish")

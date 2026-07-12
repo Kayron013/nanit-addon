@@ -58,6 +58,17 @@ func NewApp(opts Opts) (*App, error) {
 
 	if opts.MQTT != nil {
 		instance.MQTTConnection = mqtt.NewConnection(*opts.MQTT)
+		instance.MQTTConnection.SetBabyResolver(func(babyUID string) *baby.Baby {
+			if instance.SessionStore.Session == nil {
+				return nil
+			}
+			for i := range instance.SessionStore.Session.Babies {
+				if instance.SessionStore.Session.Babies[i].UID == babyUID {
+					return &instance.SessionStore.Session.Babies[i]
+				}
+			}
+			return nil
+		})
 	}
 
 	// Initialize historical data tracker

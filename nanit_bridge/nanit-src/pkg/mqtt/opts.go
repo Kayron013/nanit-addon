@@ -9,4 +9,8 @@ type Opts struct {
 	Password string
 
 	TopicPrefix string
+
+	// DiscoveryEnabled - publish retained Home Assistant MQTT discovery
+	// configs so entities appear without manual YAML
+	DiscoveryEnabled bool
 }
