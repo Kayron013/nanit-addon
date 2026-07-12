@@ -1,3 +1,7 @@
+# BUILD_FROM must be declared before the first FROM to be visible in any
+# FROM line (an ARG between stages is scoped to the preceding stage).
+ARG BUILD_FROM
+
 # Stage 1: frontend (Next.js static export)
 FROM node:18-alpine AS frontend-build
 WORKDIR /build/frontend
@@ -19,7 +23,6 @@ RUN CGO_ENABLED=1 go build -ldflags "-X main.GitCommit=addon-88f3d37" \
     -o ./bin/nanit ./cmd/nanit/*.go
 
 # Stage 3: runtime on Home Assistant base image (provides bashio)
-ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
 RUN apt-get update \
