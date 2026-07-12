@@ -51,6 +51,11 @@ if bashio::config.true 'mqtt_enabled'; then
         export NANIT_MQTT_ENABLED="true"
         export NANIT_MQTT_PREFIX="$(bashio::config 'mqtt_topic_prefix')"
         export NANIT_MQTT_CLIENT_ID="$(bashio::config 'mqtt_topic_prefix')"
+        if bashio::config.true 'mqtt_discovery'; then
+            export NANIT_MQTT_DISCOVERY="true"
+        else
+            export NANIT_MQTT_DISCOVERY="false"
+        fi
     else
         export NANIT_MQTT_ENABLED="false"
     fi

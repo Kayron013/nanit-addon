@@ -1,5 +1,5 @@
 name: Nanit Bridge
-version: "1.0.2"
+version: "1.1.0"
 slug: nanit_bridge
 description: >-
   Local RTMP + MQTT bridge for Nanit baby monitors. Vendored build of
@@ -35,6 +35,7 @@ options:
   mqtt_username: ""
   mqtt_password: ""
   mqtt_topic_prefix: nanit
+  mqtt_discovery: true
   events_polling: false
   events_polling_interval: 30
   history_enabled: true
@@ -47,6 +48,7 @@ schema:
   mqtt_username: "str?"
   mqtt_password: "password?"
   mqtt_topic_prefix: str
+  mqtt_discovery: bool
   events_polling: bool
   events_polling_interval: "int(5,3600)"
   history_enabled: bool

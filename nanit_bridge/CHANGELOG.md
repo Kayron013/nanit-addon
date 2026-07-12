@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.1.0
+
+First release with local patches to the vendored source (policy change —
+see UPSTREAM.md for the patch list; previously the source was byte-identical
+to upstream daleiii/nanit-web @ 88f3d37).
+
+- **MQTT auto-discovery**: entities (temperature, humidity, night mode,
+  stream alive, last motion/sound, night light + standby switches) now
+  appear in Home Assistant automatically as a "Nanit <baby name>" device.
+  `ha-nanit-package.yaml` is no longer needed except for the camera entity
+  (or use the Generic Camera UI integration). Disable with the new
+  `mqtt_discovery` option. If you previously installed the manual package,
+  remove it before updating — duplicate unique_ids conflict.
+- **Security: redacted log output.** The web login flow logged the
+  plain-text Nanit password, the MFA code, and full API response bodies
+  (access/refresh tokens, email, phone number) at info level. If you ever
+  shared old add-on logs, treat those tokens as exposed (changing your
+  Nanit password rotates them).
+- **Fixed first-run "no babies" in the dashboard**: the web API served the
+  baby list captured at startup, so a fresh login required an add-on restart
+  before the dashboard worked. It now reads the live session.
+- Validated: `go build ./...`, `go vet`, and upstream tests pass on the
+  modified source (also the first-ever compile validation of this codebase).
+
 ## 1.0.2
 - Fix "Unable to access the API, forbidden" at startup: run.sh shebang is now
   `#!/usr/bin/with-contenv bashio` so the s6-overlay base image passes

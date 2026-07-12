@@ -13,7 +13,11 @@ Cloud dependency note: authentication and camera control go through `api.nanit.c
 
 ## Home Assistant entities
 
-This bridge does **not** implement MQTT discovery — entities must be defined manually. Use the included `ha-nanit-package.yaml` template: replace `BABY_UID` (and `HOST_IP` for the camera), place it in your config, reload. If the Mosquitto add-on is installed, broker credentials are wired up automatically; a manual `mqtt_broker_url` (e.g. `tcp://host:1883`) overrides discovery.
+Since add-on 1.1.0 the bridge publishes **MQTT discovery** configs (local patch; upstream never implemented it despite its README): once a baby's first state update arrives, a "Nanit <name>" device appears in Settings → Devices & Services → MQTT with temperature, humidity, night mode, stream-alive, last motion/sound, and night-light/standby switches. No YAML needed. Disable with the `mqtt_discovery` option if you prefer manual entities (`ha-nanit-package.yaml` remains as a template for that case — don't use both, the duplicate `unique_id`s will conflict).
+
+The **camera** is the one entity discovery can't create. Add it in the UI: Settings → Devices & Services → Add Integration → **Generic Camera**, stream source `rtmp://<host-ip>:1935/local/<baby_uid>` — or use the ffmpeg block at the bottom of `ha-nanit-package.yaml`.
+
+If the Mosquitto add-on is installed, broker credentials are wired up automatically; a manual `mqtt_broker_url` (e.g. `tcp://host:1883`) overrides discovery.
 
 ## Options
 
@@ -25,6 +29,7 @@ This bridge does **not** implement MQTT discovery — entities must be defined m
 | `mqtt_broker_url` | Manual broker override, e.g. `tcp://192.168.1.50:1883` |
 | `mqtt_username` / `mqtt_password` | Manual broker credentials |
 | `mqtt_topic_prefix` | Topic prefix (default `nanit`) |
+| `mqtt_discovery` | Auto-create HA entities via MQTT discovery (default `true`) |
 | `events_polling` / `events_polling_interval` | Poll Nanit cloud for event messages |
 | `history_enabled` / `history_retention_days` | Local SQLite history for the dashboard |
 
