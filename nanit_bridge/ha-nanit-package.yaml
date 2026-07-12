@@ -67,9 +67,12 @@ mqtt:
       state_off: "false"
       icon: mdi:video-off
 
-# Camera: RTMP feed restreamed by the bridge. The ffmpeg camera platform
-# is YAML-only. Replace HOST_IP with the same IP as rtmp_listen_ip.
+# Camera: prefer the bridge's HLS output. Do NOT use the RTMP URL with the
+# Generic Camera integration — HA Core's stream worker (PyAV) is unstable
+# with RTMP and can crash Home Assistant. Replace HOST_IP with the same IP
+# as rtmp_listen_ip. Alternatively add via UI: Generic Camera integration
+# with the same HLS URL.
 camera:
   - platform: ffmpeg
     name: Nursery Camera
-    input: rtmp://HOST_IP:1935/local/BABY_UID
+    input: http://HOST_IP:8080/api/stream/hls/BABY_UID/playlist.m3u8
