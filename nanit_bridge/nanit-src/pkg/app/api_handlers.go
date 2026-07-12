@@ -352,7 +352,8 @@ func handleAuthLoginAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	loginJSON, _ := json.Marshal(loginData)
-	log.Info().Str("payload", string(loginJSON)).Msg("Sending login request to Nanit API")
+	// Never log loginJSON: it contains the plain-text password
+	log.Info().Msg("Sending login request to Nanit API")
 	
 	req, err := http.NewRequest("POST", "https://api.nanit.com/login", strings.NewReader(string(loginJSON)))
 	if err != nil {
@@ -385,7 +386,8 @@ func handleAuthLoginAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Info().Interface("response", nanitResponse).Msg("Nanit API response body")
+	// Never log the response body: it may contain auth/refresh tokens and
+	// account PII (email, phone). The status code above is the diagnostic.
 
 	// Status 201 = success without 2FA, Status 482 = 2FA required
 	if response.StatusCode != 201 && response.StatusCode != 482 {
@@ -450,10 +452,11 @@ func handleAuthVerify2FAAPI(w http.ResponseWriter, r *http.Request, app *App) {
 		"channel":   "email",
 	}
 	
-	log.Info().Str("mfa_code", requestData.MFACode).Msg("Sending 2FA verification request")
+	// Never log verifyData/verifyJSON: they contain the plain-text password
+	// and the MFA code
+	log.Info().Msg("Sending 2FA verification request")
 
 	verifyJSON, _ := json.Marshal(verifyData)
-	log.Info().Str("payload", string(verifyJSON)).Msg("Sending verification request to Nanit API")
 	
 	req, err := http.NewRequest("POST", "https://api.nanit.com/login", strings.NewReader(string(verifyJSON)))
 	if err != nil {
@@ -486,7 +489,8 @@ func handleAuthVerify2FAAPI(w http.ResponseWriter, r *http.Request, app *App) {
 		return
 	}
 
-	log.Info().Interface("response", nanitResponse).Msg("Nanit verification API response body")
+	// Never log the response body: it contains access/refresh tokens and
+	// account PII (email, phone). The status code above is the diagnostic.
 
 	if response.StatusCode != 201 {
 		errorMsg := "Verification failed"
