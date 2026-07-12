@@ -108,28 +108,39 @@ func requireAuth(app *App, handler http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// liveBabies - the current baby list from the session store. Handlers must
+// read this per-request rather than capture the startup list: on a first-run
+// login the server starts with no babies and the list only appears in the
+// session after web authentication completes.
+func liveBabies(app *App) []baby.Baby {
+	if app.SessionStore == nil || app.SessionStore.Session == nil {
+		return nil
+	}
+	return app.SessionStore.Session.Babies
+}
+
 func setupAPIRoutes(babies []baby.Baby, dataDir DataDirectories, stateManager *baby.StateManager, app *App) {
 	// Status and baby data - protected by auth if enabled
 	http.HandleFunc("/api/status", requireAuth(app, func(w http.ResponseWriter, r *http.Request) {
-		handleStatusAPI(w, r, babies, stateManager)
+		handleStatusAPI(w, r, liveBabies(app), stateManager)
 	}))
 
 	http.HandleFunc("/api/babies", requireAuth(app, func(w http.ResponseWriter, r *http.Request) {
-		handleBabiesAPI(w, r, babies, stateManager)
+		handleBabiesAPI(w, r, liveBabies(app), stateManager)
 	}))
 
 	// Control endpoints
 	http.HandleFunc("/api/control/night-light", func(w http.ResponseWriter, r *http.Request) {
-		handleControlAPI(w, r, "night-light", babies, stateManager, app)
+		handleControlAPI(w, r, "night-light", liveBabies(app), stateManager, app)
 	})
 
 	http.HandleFunc("/api/control/standby", func(w http.ResponseWriter, r *http.Request) {
-		handleControlAPI(w, r, "standby", babies, stateManager, app)
+		handleControlAPI(w, r, "standby", liveBabies(app), stateManager, app)
 	})
 
 	// Device info endpoint
 	http.HandleFunc("/api/device-info/", func(w http.ResponseWriter, r *http.Request) {
-		handleDeviceInfoAPI(w, r, babies, stateManager)
+		handleDeviceInfoAPI(w, r, liveBabies(app), stateManager)
 	})
 
 	// Authentication endpoints (Nanit API)
