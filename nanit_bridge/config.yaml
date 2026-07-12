@@ -1,0 +1,51 @@
+name: Nanit Bridge
+version: "1.0.0"
+slug: nanit_bridge
+description: >-
+  Local RTMP + MQTT bridge for Nanit baby monitors. Vendored build of
+  daleiii/nanit-web (commit 88f3d37) — camera stream stays on your LAN,
+  sensors and controls surface in Home Assistant via MQTT.
+url: "https://github.com/Kayron013/nanit-addon"
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: services
+boot: auto
+watchdog: tcp://[HOST]:[PORT:8080]
+ports:
+  1935/tcp: 1935
+  8080/tcp: 8080
+ports_description:
+  1935/tcp: >-
+    RTMP ingest. The Nanit camera is commanded to push its stream to this
+    port on your host's LAN IP. Must remain exposed.
+  8080/tcp: >-
+    Web dashboard (setup, 2FA login, live view, history). LAN only — do not
+    forward this to the internet.
+services:
+  - mqtt:want
+options:
+  rtmp_listen_ip: ""
+  log_level: info
+  mqtt_enabled: true
+  mqtt_broker_url: ""
+  mqtt_username: ""
+  mqtt_password: ""
+  mqtt_topic_prefix: nanit
+  events_polling: false
+  events_polling_interval: 30
+  history_enabled: true
+  history_retention_days: 30
+schema:
+  rtmp_listen_ip: "str?"
+  log_level: "list(trace|debug|info|warn|error)"
+  mqtt_enabled: bool
+  mqtt_broker_url: "str?"
+  mqtt_username: "str?"
+  mqtt_password: "password?"
+  mqtt_topic_prefix: str
+  events_polling: bool
+  events_polling_interval: "int(5,3600)"
+  history_enabled: bool
+  history_retention_days: "int(1,365)"

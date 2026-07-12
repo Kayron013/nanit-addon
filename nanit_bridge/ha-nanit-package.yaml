@@ -1,0 +1,73 @@
+# Nanit Bridge — Home Assistant MQTT entities
+# ------------------------------------------------------------------
+# The bridge publishes plain MQTT state topics; it does NOT implement
+# HA MQTT discovery (despite the upstream README's claim — verified
+# against source at commit 88f3d37: pkg/mqtt/mqtt.go publishes only
+# <prefix>/babies/<uid>/<key> topics). Define entities manually:
+#
+# 1. Find your BABY_UID in the add-on dashboard or add-on log.
+# 2. Replace all occurrences of BABY_UID below.
+# 3. If you changed mqtt_topic_prefix, replace the leading "nanit".
+# 4. Drop this file in /config/packages/ (with packages enabled) or
+#    merge into your mqtt: block, then reload MQTT entities.
+#
+# Published payloads are raw strings: floats for temperature/humidity,
+# "true"/"false" for booleans. Command topics accept "true"/"false".
+
+mqtt:
+  sensor:
+    - name: "Nursery Temperature"
+      unique_id: nanit_BABY_UID_temperature
+      state_topic: "nanit/babies/BABY_UID/temperature"
+      unit_of_measurement: "°C"
+      device_class: temperature
+      state_class: measurement
+
+    - name: "Nursery Humidity"
+      unique_id: nanit_BABY_UID_humidity
+      state_topic: "nanit/babies/BABY_UID/humidity"
+      unit_of_measurement: "%"
+      device_class: humidity
+      state_class: measurement
+
+  binary_sensor:
+    - name: "Nursery Night Mode"
+      unique_id: nanit_BABY_UID_is_night
+      state_topic: "nanit/babies/BABY_UID/is_night"
+      payload_on: "true"
+      payload_off: "false"
+
+    - name: "Nanit Stream Alive"
+      unique_id: nanit_BABY_UID_stream_alive
+      state_topic: "nanit/babies/BABY_UID/is_stream_alive"
+      payload_on: "true"
+      payload_off: "false"
+      device_class: connectivity
+
+  switch:
+    - name: "Nanit Night Light"
+      unique_id: nanit_BABY_UID_night_light
+      state_topic: "nanit/babies/BABY_UID/night_light"
+      command_topic: "nanit/babies/BABY_UID/night_light/switch"
+      payload_on: "true"
+      payload_off: "false"
+      state_on: "true"
+      state_off: "false"
+      icon: mdi:lightbulb-night
+
+    - name: "Nanit Standby"
+      unique_id: nanit_BABY_UID_standby
+      state_topic: "nanit/babies/BABY_UID/standby"
+      command_topic: "nanit/babies/BABY_UID/standby/switch"
+      payload_on: "true"
+      payload_off: "false"
+      state_on: "true"
+      state_off: "false"
+      icon: mdi:video-off
+
+# Camera: RTMP feed restreamed by the bridge. The ffmpeg camera platform
+# is YAML-only. Replace HOST_IP with the same IP as rtmp_listen_ip.
+camera:
+  - platform: ffmpeg
+    name: Nursery Camera
+    input: rtmp://HOST_IP:1935/local/BABY_UID

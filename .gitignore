@@ -1,0 +1,7 @@
+# build artifacts
+nanit_bridge/nanit-src/frontend/node_modules/
+nanit_bridge/nanit-src/frontend/dist/
+nanit_bridge/nanit-src/frontend/.next/
+
+# local tooling
+.claude/settings.local.json
