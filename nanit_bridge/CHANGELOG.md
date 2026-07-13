@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.2
+- Add add-on icon
+
 ## 1.1.1
 - Add "Open Web UI" button on the add-on page (webui declaration)
 
