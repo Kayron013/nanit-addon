@@ -67,11 +67,8 @@ mqtt:
       state_off: "false"
       icon: mdi:video-off
 
-# Camera: prefer the bridge's HLS output. Do NOT use the RTMP URL with the
-# Generic Camera integration — HA Core's stream worker (PyAV) is unstable
-# with RTMP and can crash Home Assistant. Replace HOST_IP with the same IP
-# as rtmp_listen_ip. Alternatively add via UI: Generic Camera integration
-# with the same HLS URL.
+# Camera: recommended setup is the go2rtc pattern in DOCS.md; this HLS
+# entity is the fallback. Never use the RTMP URL with Generic Camera.
 camera:
   - platform: ffmpeg
     name: Nursery Camera

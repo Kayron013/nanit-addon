@@ -1,8 +1,8 @@
 # Nanit Bridge
 
-Runs a local bridge for Nanit baby monitors: it authenticates against the Nanit cloud API, commands the camera to push its RTMP stream to this add-on on your LAN, restreams it for Home Assistant/ffmpeg consumption, and publishes sensor state (temperature, humidity, day/night) plus night-light and standby controls over MQTT.
+Runs a local bridge for Nanit baby monitors: it authenticates against the Nanit cloud API, commands the camera to push its RTMP stream to this add-on on your LAN, restreams it for Home Assistant consumption, and publishes sensor state (temperature, humidity, day/night, motion/sound) plus night-light and standby controls over MQTT.
 
-Cloud dependency note: authentication and camera control go through `api.nanit.com` (verified: this is the only outbound endpoint in the source). The video stream itself travels camera → this add-on entirely on your LAN.
+Cloud dependency note: authentication and camera control go through `api.nanit.com` (the only outbound endpoint in the source). The video stream itself travels camera → this add-on entirely on your LAN.
 
 ## First-time setup
 
@@ -13,11 +13,25 @@ Cloud dependency note: authentication and camera control go through `api.nanit.c
 
 ## Home Assistant entities
 
-Since add-on 1.1.0 the bridge publishes **MQTT discovery** configs (local patch; upstream never implemented it despite its README): once a baby's first state update arrives, a "Nanit <name>" device appears in Settings → Devices & Services → MQTT with temperature, humidity, night mode, stream-alive, last motion/sound, and night-light/standby switches. No YAML needed. Disable with the `mqtt_discovery` option if you prefer manual entities (`ha-nanit-package.yaml` remains as a template for that case — don't use both, the duplicate `unique_id`s will conflict).
-
-The **camera** is the one entity discovery can't create. Add it in the UI: Settings → Devices & Services → Add Integration → **Generic Camera**, stream source `http://<host-ip>:8080/api/stream/hls/<baby_uid>/playlist.m3u8` (unauthenticated HLS, served by the bridge). Do **not** point Generic Camera at the RTMP URL — HA Core's stream worker (PyAV) is unstable with RTMP sources and can crash Home Assistant outright. The RTMP URL (`rtmp://<host-ip>:1935/local/<baby_uid>`) remains fine for external consumers like VLC or go2rtc.
+The bridge publishes MQTT discovery configs: once a baby's first state update arrives, a "Nanit <name>" device appears under Settings → Devices & Services → MQTT with temperature, humidity, night mode, stream-alive, last motion/sound, and night-light/standby switches. No YAML needed. Disable with the `mqtt_discovery` option if you prefer manual entities (`ha-nanit-package.yaml` is the template for that case — don't use both, the duplicate `unique_id`s will conflict).
 
 If the Mosquitto add-on is installed, broker credentials are wired up automatically; a manual `mqtt_broker_url` (e.g. `tcp://host:1883`) overrides discovery.
+
+## Camera
+
+The camera is the one entity MQTT discovery can't create. **Never point Generic Camera at the RTMP URL** (`rtmp://<host-ip>:1935/local/<baby_uid>`) — HA Core's stream worker is unstable with RTMP sources and can crash Home Assistant outright. The RTMP URL is fine for external consumers (VLC, go2rtc).
+
+**Recommended: go2rtc.** Install the [AlexxIT go2rtc](https://github.com/AlexxIT/hassio-addons) add-on and add:
+
+```yaml
+streams:
+  nursery:
+    - "ffmpeg:rtmp://<host-ip>:1935/local/<baby_uid>#video=copy#audio=aac#audio=opus"
+```
+
+Keep `audio=aac` before `audio=opus` — reversing them makes casts/Google devices silent. Then add a **Generic Camera** with stream source `rtsp://<host-ip>:8554/nursery` and still image `http://<host-ip>:1984/api/frame.jpeg?src=nursery`. This gives low-latency WebRTC in the HA UI plus reliable casting.
+
+**Fallback (no extra add-on): direct HLS.** Generic Camera with stream source `http://<host-ip>:8080/api/stream/hls/<baby_uid>/playlist.m3u8` and no still image URL. Higher latency (5–10 s) and less reliable casting than the go2rtc path.
 
 ## Options
 
@@ -33,9 +47,17 @@ If the Mosquitto add-on is installed, broker credentials are wired up automatica
 | `events_polling` / `events_polling_interval` | Poll Nanit cloud for event messages |
 | `history_enabled` / `history_retention_days` | Local SQLite history for the dashboard |
 
+## Troubleshooting
+
+- **Camera preview spins/errors during reconfigure** — known HA 2026.7 dialog bug. Verify the stream plays in the go2rtc UI, then confirm and submit anyway.
+- **Plays in browser, fails in macOS app** — app quirk; test in a browser first before debugging the stream.
+- **Cast has no sound** — audio order in the go2rtc stream config; `audio=aac` must come before `audio=opus`.
+- **Can't play camera on a Music Assistant player** — MA is audio-only; use the native cast entity / `camera.play_stream`.
+- **Video dead but sensors alive** — Nanit-side connection limit or standby is on. Check the bridge dashboard at port 8080; restart the add-on if wedged.
+
 ## Known limitations
 
-- **No ingress**: the dashboard frontend uses root-absolute paths and cannot be proxied under HA ingress without patching. Access it directly at port 8080 on your LAN. Do not port-forward it.
+- **No ingress**: the dashboard frontend uses root-absolute paths and cannot be proxied under HA ingress. Access it directly at port 8080 on your LAN. Do not port-forward it.
 - **Camera connection limits**: Nanit cameras cap concurrent local streaming connections. Video may fail while sensors keep working; the bridge retries automatically. This is Nanit-side throttling, not an add-on fault.
 - **Reverse-engineered protocol**: Nanit can break this at any time by changing their API (they did once before, with mandatory 2FA).
 
