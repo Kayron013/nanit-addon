@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.1
+- Add "Open Web UI" button on the add-on page (webui declaration)
+
 ## 1.1.0
 
 First release with local patches to the vendored source (policy change —
