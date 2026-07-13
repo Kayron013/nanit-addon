@@ -105,6 +105,12 @@ func (h *HLSTranscoder) Start() error {
 		"-c:v", "libx264",                  // Video codec
 		"-preset", "ultrafast",             // Fast encoding
 		"-tune", "zerolatency",             // Low latency
+		// Audio must be AAC: HA's stream worker muxes only the first audio
+		// track and drops anything outside AUDIO_CODECS = {"aac", "mp3"}
+		// (homeassistant/components/stream/worker.py). WebRTC consumers can
+		// only use opus but negotiate it regardless of track position —
+		// which is also why the docs tell go2rtc users to order audio=aac
+		// before audio=opus in their stream sources.
 		"-c:a", "aac",                      // Audio codec
 		"-f", "hls",                        // HLS format
 		"-hls_time", "2",                   // 2 second segments
@@ -586,6 +592,12 @@ func (h *HLSTranscoder) restartFFmpeg() error {
 		"-c:v", "libx264",                  // Video codec
 		"-preset", "ultrafast",             // Fast encoding
 		"-tune", "zerolatency",             // Low latency
+		// Audio must be AAC: HA's stream worker muxes only the first audio
+		// track and drops anything outside AUDIO_CODECS = {"aac", "mp3"}
+		// (homeassistant/components/stream/worker.py). WebRTC consumers can
+		// only use opus but negotiate it regardless of track position —
+		// which is also why the docs tell go2rtc users to order audio=aac
+		// before audio=opus in their stream sources.
 		"-c:a", "aac",                      // Audio codec
 		"-f", "hls",                        // HLS format
 		"-hls_time", "2",                   // 2 second segments
