@@ -28,6 +28,11 @@ type WebsocketConnection struct {
 	resHandlers   map[int32]unhandledRequest
 
 	lastRequestID int32
+
+	// lastInbound - unix nanos of the most recent inbound message of any
+	// type; the liveness monitor uses this to detect half-dead connections
+	// that the transport layer never reports (see websocket.go)
+	lastInbound int64
 }
 
 // NewWebsocketConnection - constructor
@@ -36,7 +41,13 @@ func NewWebsocketConnection(socket *gowebsocket.Socket) *WebsocketConnection {
 		socket:        socket,
 		resHandlers:   make(map[int32]unhandledRequest),
 		lastRequestID: 0,
+		lastInbound:   time.Now().UnixNano(),
 	}
+}
+
+// LastInbound - time of the most recent inbound message
+func (conn *WebsocketConnection) LastInbound() time.Time {
+	return time.Unix(0, atomic.LoadInt64(&conn.lastInbound))
 }
 
 // RegisterMessageHandler - registers handler which will be called whenever new message is received
@@ -158,6 +169,8 @@ func (conn *WebsocketConnection) handleResponse(r *Response) {
 }
 
 func (conn *WebsocketConnection) handleMessage(m *Message) {
+	atomic.StoreInt64(&conn.lastInbound, time.Now().UnixNano())
+
 	if *m.Type == Message_RESPONSE && m.Response != nil {
 		conn.handleResponse(m.Response)
 	}

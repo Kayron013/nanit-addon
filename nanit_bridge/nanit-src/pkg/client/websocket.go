@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	sync "sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -35,35 +36,31 @@ type WebsocketConnectionManager struct {
 	readySubscribers []WebsocketConnectionHandler
 }
 
+const (
+	// keepaliveInterval - how often we send app-level KEEPALIVE messages and
+	// run the liveness check
+	keepaliveInterval = 20 * time.Second
+
+	// livenessWindow - inbound silence tolerated before we actively probe the
+	// camera (3 missed keepalive cycles). Silence alone never kills the
+	// connection: the camera's chatter pattern isn't guaranteed, so a probe
+	// (which must round-trip bridge → Nanit cloud → camera) is the only
+	// evidence we accept that the link is truly dead.
+	livenessWindow = 60 * time.Second
+
+	// probeTimeout - how long a liveness probe may wait for its response
+	probeTimeout = 15 * time.Second
+)
+
 // NewWebsocketConnectionManager - constructor
 func NewWebsocketConnectionManager(babyUID string, cameraUID string, session *session.Session, api *NanitClient, babyStateManager *baby.StateManager) *WebsocketConnectionManager {
-	manager := &WebsocketConnectionManager{
+	return &WebsocketConnectionManager{
 		BabyUID:          babyUID,
 		CameraUID:        cameraUID,
 		Session:          session,
 		API:              api,
 		BabyStateManager: babyStateManager,
 	}
-
-	manager.WithReadyConnection(func(conn *WebsocketConnection, ctx utils.GracefulContext) {
-		ticker := time.NewTicker(20 * time.Second)
-
-		for {
-			select {
-			case <-ctx.Done():
-				ticker.Stop()
-				return
-			case <-ticker.C:
-				if err := conn.SendMessage(&Message{
-					Type: Message_Type(Message_KEEPALIVE).Enum(),
-				}); err != nil {
-					log.Error().Err(err).Msg("Failed to send keepalive message")
-				}
-			}
-		}
-	})
-
-	return manager
 }
 
 // WithReadyConnection - registers handler which will be called as a go routine upon ready connection
@@ -178,11 +175,88 @@ func (manager *WebsocketConnectionManager) run(attempt utils.AttemptContext) {
 	log.Trace().Msg("Connecting to websocket")
 	socket.Connect()
 
-	<-attempt.Done()
+	// Keepalive + liveness monitor. This runs here rather than in a ready-
+	// connection handler so it can fail the attempt: gowebsocket's
+	// OnDisconnected never fires for a half-dead TCP connection (writes
+	// buffer into the void, the read loop blocks forever), which previously
+	// left commands silently blackholed until an add-on restart.
+	ticker := time.NewTicker(keepaliveInterval)
+	defer ticker.Stop()
 
-	if socket.IsConnected {
-		log.Debug().Msg("Closing websocket")
-		socket.Close()
+	var probeInFlight int32
+
+	for {
+		select {
+		case <-attempt.Done():
+			if socket.IsConnected {
+				log.Debug().Msg("Closing websocket")
+				socket.Close()
+			}
+			return
+
+		case <-ticker.C:
+			manager.mu.RLock()
+			rs := manager.readyState
+			manager.mu.RUnlock()
+
+			// readyState persists across attempts; only act on the one
+			// belonging to this attempt (i.e. after OnConnected has fired).
+			if rs == nil || rs.Context != utils.GracefulContext(attempt) {
+				continue
+			}
+			conn := rs.Connection
+
+			// Note: transport-level write errors cannot surface here —
+			// gowebsocket's SendBinary swallows them — so this only catches
+			// marshal failures. Dead links are detected by the read-side
+			// probe below.
+			if err := conn.SendMessage(&Message{
+				Type: Message_Type(Message_KEEPALIVE).Enum(),
+			}); err != nil {
+				log.Error().Err(err).Msg("Failed to send keepalive message, reconnecting")
+				manager.BabyStateManager.Update(manager.BabyUID, *baby.NewState().SetWebsocketAlive(false))
+				attempt.Fail(err)
+				continue
+			}
+
+			if time.Since(conn.LastInbound()) < livenessWindow {
+				continue
+			}
+
+			// Prolonged inbound silence: actively probe before declaring the
+			// connection dead, so a healthy-but-quiet camera is never
+			// reconnect-looped. A response resets LastInbound on arrival.
+			if !atomic.CompareAndSwapInt32(&probeInFlight, 0, 1) {
+				continue
+			}
+
+			log.Warn().
+				Str("baby_uid", manager.BabyUID).
+				Dur("silence", time.Since(conn.LastInbound())).
+				Msg("No inbound websocket traffic, probing camera")
+
+			go func() {
+				defer atomic.StoreInt32(&probeInFlight, 0)
+
+				awaitResponse := conn.SendRequest(RequestType_GET_SENSOR_DATA, &Request{
+					GetSensorData: &GetSensorData{
+						All: utils.ConstRefBool(true),
+					},
+				})
+
+				if _, err := awaitResponse(probeTimeout); err != nil {
+					log.Error().
+						Err(err).
+						Str("baby_uid", manager.BabyUID).
+						Msg("Liveness probe failed, declaring websocket dead and reconnecting")
+					manager.BabyStateManager.Update(manager.BabyUID, *baby.NewState().SetWebsocketAlive(false))
+					attempt.Fail(fmt.Errorf("websocket liveness probe failed: %w", err))
+					return
+				}
+
+				log.Info().Str("baby_uid", manager.BabyUID).Msg("Liveness probe succeeded, connection is healthy")
+			}()
+		}
 	}
 }
 
