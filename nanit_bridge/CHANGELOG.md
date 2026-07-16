@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.2.0
+
+MQTT/websocket robustness release — fixes the "night light toggle dead
+until add-on restart" failure and makes entity availability honest.
+
+- **Websocket liveness with probe-before-kill.** Half-dead camera
+  connections (commands blackholed, no disconnect event ever fired) are
+  now detected: >60s of inbound silence triggers a lightweight
+  GET_SENSOR_DATA probe; a failed/timed-out probe (15s) declares the
+  link dead and forces a reconnect. Silence alone never kills a healthy
+  quiet connection, and the probe round-trips through Nanit's cloud to
+  the camera, so it also catches a dead cloud↔camera segment.
+- **Availability topics.** Bridge-level `<prefix>/bridge/status`
+  (retained, with MQTT Last Will for ungraceful deaths) and per-camera
+  `<prefix>/babies/<uid>/status` (retained, driven by websocket
+  liveness). All discovered entities reference both with
+  `availability_mode: all` — entities now show *unavailable* in HA when
+  the bridge is down or the camera link is dead, instead of stale
+  values and toggles that lie. Sensors share the camera availability
+  deliberately: sensor data rides the same websocket as commands.
+- **State republish on HA restart.** The bridge listens for Home
+  Assistant's MQTT birth message and replays availability plus a full
+  state snapshot for every known baby (~2s after HA comes up). No more
+  `unknown` entities until the next organic state change.
+- **Distinct MQTT client ID.** The bridge previously connected with
+  client ID equal to the topic prefix (`nanit`), inviting broker
+  session-stealing collisions; it now defaults to `nanit-bridge`
+  (config: `NANIT_MQTT_CLIENT_ID`). Note: because the client uses
+  persistent sessions, the old `nanit` broker session is abandoned —
+  harmless, the broker expires it.
+
 ## 1.1.2
 - Add add-on icon
 
