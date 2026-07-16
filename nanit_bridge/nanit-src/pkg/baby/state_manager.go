@@ -74,6 +74,19 @@ func (manager *StateManager) Subscribe(callback func(babyUID string, state State
 	}
 }
 
+// GetKnownBabyUIDs - returns the UIDs of all babies that have reported state
+func (manager *StateManager) GetKnownBabyUIDs() []string {
+	manager.stateMutex.RLock()
+	defer manager.stateMutex.RUnlock()
+
+	uids := make([]string, 0, len(manager.babiesByUID))
+	for uid := range manager.babiesByUID {
+		uids = append(uids, uid)
+	}
+
+	return uids
+}
+
 // GetBabyState - returns current state of a baby
 func (manager *StateManager) GetBabyState(babyUID string) *State {
 	manager.stateMutex.RLock()

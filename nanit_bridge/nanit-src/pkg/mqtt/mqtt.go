@@ -38,7 +38,10 @@ func (conn *Connection) Run(manager *baby.StateManager, ctx utils.GracefulContex
 
 	opts := MQTT.NewClientOptions()
 	opts.AddBroker(conn.Opts.BrokerURL)
-	opts.SetClientID(conn.Opts.TopicPrefix)
+	// Client ID must be unique per broker client — colliding IDs cause
+	// session stealing. Previously this reused the topic prefix, which is a
+	// likely collision target; Opts.ClientID defaults to "nanit-bridge".
+	opts.SetClientID(conn.Opts.ClientID)
 	opts.SetUsername(conn.Opts.Username)
 	opts.SetPassword(conn.Opts.Password)
 	opts.SetCleanSession(false)
@@ -202,28 +205,15 @@ func runMqtt(conn *Connection, attempt utils.AttemptContext) {
 			conn.publishAvailability(conn.babyStatusTopic(babyUID), *state.IsWebsocketAlive)
 		}
 
-		publish := func(key string, value interface{}) {
-			topic := fmt.Sprintf("%v/babies/%v/%v", conn.Opts.TopicPrefix, babyUID, key)
-			log.Trace().Str("topic", topic).Interface("value", value).Msg("MQTT publish")
-
-			token := conn.client.Publish(topic, 0, false, fmt.Sprintf("%v", value))
-			if token.Wait(); token.Error() != nil {
-				log.Error().Err(token.Error()).Msgf("Unable to publish %v update", key)
-			}
-		}
-
-		for key, value := range state.AsMap(false) {
-			publish(key, value)
-		}
-
-		if state.StreamState != nil && *state.StreamState != baby.StreamState_Unknown {
-			publish("is_stream_alive", *state.StreamState == baby.StreamState_Alive)
-		}
+		conn.publishBabyState(babyUID, state)
 	})
 
 	// Subscribe to accept light mqtt messages
 	conn.subscribeToLightCommand()
 	conn.subscribeToStandbyCommand()
+
+	// Republish state when Home Assistant restarts
+	conn.subscribeToHomeAssistantStatus()
 
 	// Wait until interrupt signal is received
 	<-attempt.Done()
@@ -234,4 +224,28 @@ func runMqtt(conn *Connection, attempt utils.AttemptContext) {
 	// on ungraceful deaths.
 	conn.publishAvailability(conn.bridgeStatusTopic(), false)
 	conn.client.Disconnect(250)
+}
+
+// publishBabyState - publishes every set field of a state to its per-field
+// topic. Nil fields are naturally skipped (AsMap omits them): values the
+// camera hasn't reported are never fabricated — availability tells that
+// story instead.
+func (conn *Connection) publishBabyState(babyUID string, state baby.State) {
+	publish := func(key string, value interface{}) {
+		topic := fmt.Sprintf("%v/babies/%v/%v", conn.Opts.TopicPrefix, babyUID, key)
+		log.Trace().Str("topic", topic).Interface("value", value).Msg("MQTT publish")
+
+		token := conn.client.Publish(topic, 0, false, fmt.Sprintf("%v", value))
+		if token.Wait(); token.Error() != nil {
+			log.Error().Err(token.Error()).Msgf("Unable to publish %v update", key)
+		}
+	}
+
+	for key, value := range state.AsMap(false) {
+		publish(key, value)
+	}
+
+	if state.StreamState != nil && *state.StreamState != baby.StreamState_Unknown {
+		publish("is_stream_alive", *state.StreamState == baby.StreamState_Alive)
+	}
 }

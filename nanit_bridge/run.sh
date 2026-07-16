@@ -50,7 +50,7 @@ if bashio::config.true 'mqtt_enabled'; then
     if bashio::var.has_value "${NANIT_MQTT_BROKER_URL:-}"; then
         export NANIT_MQTT_ENABLED="true"
         export NANIT_MQTT_PREFIX="$(bashio::config 'mqtt_topic_prefix')"
-        export NANIT_MQTT_CLIENT_ID="$(bashio::config 'mqtt_topic_prefix')"
+        export NANIT_MQTT_CLIENT_ID="$(bashio::config 'mqtt_topic_prefix')-bridge"
         if bashio::config.true 'mqtt_discovery'; then
             export NANIT_MQTT_DISCOVERY="true"
         else

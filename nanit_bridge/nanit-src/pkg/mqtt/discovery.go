@@ -3,7 +3,9 @@ package mqtt
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
+	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/indiefan/home_assistant_nanit/pkg/baby"
 	"github.com/rs/zerolog/log"
 )
@@ -143,4 +145,37 @@ func (conn *Connection) publishDiscoveryConfigs(babyUID string) {
 	}
 
 	log.Info().Str("baby_uid", babyUID).Str("device", deviceName).Msg("Published MQTT discovery configs")
+}
+
+// subscribeToHomeAssistantStatus - listens for Home Assistant's birth
+// message and republishes availability plus a full state snapshot for every
+// known baby. State topics are deliberately non-retained, so after an HA
+// restart entities would otherwise sit at `unknown` until the next organic
+// state change.
+func (conn *Connection) subscribeToHomeAssistantStatus() {
+	topic := discoveryPrefix + "/status"
+
+	handler := func(_ MQTT.Client, msg MQTT.Message) {
+		if string(msg.Payload()) != availabilityOnline {
+			return
+		}
+
+		log.Info().Msg("Home Assistant came online — republishing availability and state")
+
+		go func() {
+			// HA's birth message can precede its MQTT subscriptions being
+			// fully active; give it a moment before replaying state.
+			time.Sleep(2 * time.Second)
+
+			for _, babyUID := range conn.StateManager.GetKnownBabyUIDs() {
+				state := conn.StateManager.GetBabyState(babyUID)
+				conn.publishAvailability(conn.babyStatusTopic(babyUID), state.GetIsWebsocketAlive())
+				conn.publishBabyState(babyUID, *state)
+			}
+		}()
+	}
+
+	if token := conn.client.Subscribe(topic, 0, handler); token.Wait() && token.Error() != nil {
+		log.Error().Err(token.Error()).Str("topic", topic).Msg("Failed to subscribe to Home Assistant status topic")
+	}
 }
