@@ -113,9 +113,21 @@ func (conn *Connection) publishDiscoveryConfigs(babyUID string) {
 		}},
 	}
 
+	// Every entity — sensors included — shares the camera's availability:
+	// sensor data rides the same websocket as commands, so a dead camera
+	// link means stale sensors too. "Stale but green" is the failure mode
+	// availability exists to eliminate. availability_mode "all" also takes
+	// everything unavailable when the bridge itself is down (LWT).
+	availability := []map[string]interface{}{
+		{"topic": conn.bridgeStatusTopic()},
+		{"topic": conn.babyStatusTopic(babyUID)},
+	}
+
 	for _, entity := range entities {
 		entity.config["unique_id"] = fmt.Sprintf("nanit_%v_%v", babyUID, entity.object)
 		entity.config["device"] = device
+		entity.config["availability"] = availability
+		entity.config["availability_mode"] = "all"
 
 		topic := fmt.Sprintf("%v/%v/nanit_%v/%v/config", discoveryPrefix, entity.component, babyUID, entity.object)
 		payload, err := json.Marshal(entity.config)

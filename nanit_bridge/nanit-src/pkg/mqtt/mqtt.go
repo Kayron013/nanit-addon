@@ -43,6 +43,18 @@ func (conn *Connection) Run(manager *baby.StateManager, ctx utils.GracefulContex
 	opts.SetPassword(conn.Opts.Password)
 	opts.SetCleanSession(false)
 
+	// Bridge availability: the broker publishes the retained offline payload
+	// if this client dies without a clean disconnect (LWT); the connect
+	// handler asserts online on the initial connect and on every paho
+	// auto-reconnect.
+	opts.SetWill(conn.bridgeStatusTopic(), availabilityOffline, 1, true)
+	opts.SetOnConnectHandler(func(client MQTT.Client) {
+		token := client.Publish(conn.bridgeStatusTopic(), 1, true, availabilityOnline)
+		if token.Wait(); token.Error() != nil {
+			log.Error().Err(token.Error()).Msg("Unable to publish bridge online status")
+		}
+	})
+
 	conn.client = MQTT.NewClient(opts)
 
 	utils.RunWithPerseverance(func(attempt utils.AttemptContext) {
@@ -178,7 +190,16 @@ func runMqtt(conn *Connection, attempt utils.AttemptContext) {
 
 			if firstSighting {
 				conn.publishDiscoveryConfigs(babyUID)
+				// Availability topics are retained; assert the current value
+				// so entities aren't stuck on a stale retained payload.
+				conn.publishAvailability(conn.babyStatusTopic(babyUID), conn.StateManager.GetBabyState(babyUID).GetIsWebsocketAlive())
 			}
+		}
+
+		// Per-camera availability follows websocket liveness transitions
+		// (state updates carry IsWebsocketAlive only when it changed).
+		if state.IsWebsocketAlive != nil {
+			conn.publishAvailability(conn.babyStatusTopic(babyUID), *state.IsWebsocketAlive)
 		}
 
 		publish := func(key string, value interface{}) {
@@ -209,5 +230,8 @@ func runMqtt(conn *Connection, attempt utils.AttemptContext) {
 
 	log.Debug().Msg("Closing MQTT connection on interrupt")
 	unsubscribe()
+	// Graceful shutdown publishes offline explicitly — the LWT only fires
+	// on ungraceful deaths.
+	conn.publishAvailability(conn.bridgeStatusTopic(), false)
 	conn.client.Disconnect(250)
 }
