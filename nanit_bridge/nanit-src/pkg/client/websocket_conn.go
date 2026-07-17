@@ -33,6 +33,15 @@ type WebsocketConnection struct {
 	// type; the liveness monitor uses this to detect half-dead connections
 	// that the transport layer never reports (see websocket.go)
 	lastInbound int64
+
+	// consecutiveTimeouts - requests that timed out with no response since
+	// the last answered request. Detects the one-way wedge the silence
+	// window cannot: the camera keeps pushing sensor data (inbound looks
+	// healthy) while every request goes unanswered — observed in production
+	// as endless "Streaming request timeout" loops and dead night-light
+	// commands. Reset by any matched response, even a late one: a late
+	// response still proves the request channel works.
+	consecutiveTimeouts int32
 }
 
 // NewWebsocketConnection - constructor
@@ -48,6 +57,11 @@ func NewWebsocketConnection(socket *gowebsocket.Socket) *WebsocketConnection {
 // LastInbound - time of the most recent inbound message
 func (conn *WebsocketConnection) LastInbound() time.Time {
 	return time.Unix(0, atomic.LoadInt64(&conn.lastInbound))
+}
+
+// ConsecutiveTimeouts - requests that timed out since the last response
+func (conn *WebsocketConnection) ConsecutiveTimeouts() int32 {
+	return atomic.LoadInt32(&conn.consecutiveTimeouts)
 }
 
 // RegisterMessageHandler - registers handler which will be called whenever new message is received
@@ -126,6 +140,7 @@ func (conn *WebsocketConnection) SendRequest(reqType RequestType, requestData *R
 		select {
 		case <-timer.C:
 			close(resC)
+			atomic.AddInt32(&conn.consecutiveTimeouts, 1)
 			return nil, errors.New("Request timeout")
 		case res := <-resC:
 			close(resC)
@@ -164,6 +179,7 @@ func (conn *WebsocketConnection) handleResponse(r *Response) {
 		delete(conn.resHandlers, requestID)
 		conn.resHandlersMu.Unlock()
 
+		atomic.StoreInt32(&conn.consecutiveTimeouts, 0)
 		unhandledReqCandidate.HandleResponse(r)
 	}
 }
