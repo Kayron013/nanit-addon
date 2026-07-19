@@ -1,5 +1,5 @@
 name: Nanit Bridge
-version: "1.2.0"
+version: "1.2.1"
 slug: nanit_bridge
 description: >-
   Local RTMP + MQTT bridge for Nanit baby monitors. Vendored build of

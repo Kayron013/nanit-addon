@@ -50,6 +50,12 @@ const (
 
 	// probeTimeout - how long a liveness probe may wait for its response
 	probeTimeout = 15 * time.Second
+
+	// timeoutProbeThreshold - consecutive unanswered requests that trigger a
+	// probe even when inbound traffic looks healthy. Catches the one-way
+	// wedge where the camera keeps pushing sensor data but stops answering
+	// requests (endless streaming-request timeouts, dead night light).
+	timeoutProbeThreshold = 3
 )
 
 // NewWebsocketConnectionManager - constructor
@@ -219,13 +225,18 @@ func (manager *WebsocketConnectionManager) run(attempt utils.AttemptContext) {
 				continue
 			}
 
-			if time.Since(conn.LastInbound()) < livenessWindow {
+			silent := time.Since(conn.LastInbound()) >= livenessWindow
+			wedged := conn.ConsecutiveTimeouts() >= timeoutProbeThreshold
+			if !silent && !wedged {
 				continue
 			}
 
-			// Prolonged inbound silence: actively probe before declaring the
-			// connection dead, so a healthy-but-quiet camera is never
-			// reconnect-looped. A response resets LastInbound on arrival.
+			// Suspect connection: actively probe before declaring it dead,
+			// so a healthy-but-quiet camera is never reconnect-looped. Two
+			// independent suspicions arrive here — prolonged inbound silence,
+			// or repeated request timeouts despite healthy-looking inbound
+			// (the one-way wedge). The probe discriminates both: a response
+			// proves the request channel works (and resets both signals).
 			if !atomic.CompareAndSwapInt32(&probeInFlight, 0, 1) {
 				continue
 			}
@@ -233,7 +244,10 @@ func (manager *WebsocketConnectionManager) run(attempt utils.AttemptContext) {
 			log.Warn().
 				Str("baby_uid", manager.BabyUID).
 				Dur("silence", time.Since(conn.LastInbound())).
-				Msg("No inbound websocket traffic, probing camera")
+				Int32("consecutive_timeouts", conn.ConsecutiveTimeouts()).
+				Bool("inbound_silent", silent).
+				Bool("requests_wedged", wedged).
+				Msg("Websocket suspect, probing camera")
 
 			go func() {
 				defer atomic.StoreInt32(&probeInFlight, 0)

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.1
+
+- **Detect the one-way websocket wedge.** Observed in production (2026-07-17):
+  the camera keeps pushing sensor data — so inbound looks healthy and the
+  1.2.0 silence probe never fires — while every request (streaming,
+  night light, standby) times out unanswered, producing endless
+  "Streaming request timeout, trying again" log loops and unresponsive
+  toggles. The liveness monitor now also probes after 3 consecutive
+  request timeouts; a failed probe forces the same reconnect path. Any
+  matched response (even a late one) resets the counter, so a healthy
+  connection is never reconnect-looped.
+
 ## 1.2.0
 
 MQTT/websocket robustness release — fixes the "night light toggle dead
