@@ -68,7 +68,24 @@ func requestLocalStreaming(babyUID string, targetURL string, streamingStatus cli
 				return
 			}
 
+			// Stop if the connection this loop was spawned for is gone.
+			// Checked before the per-baby flag because that flag belongs to
+			// the newest connection, not necessarily this one: after a
+			// reconnect it reads true again and would keep a stale loop
+			// alive, retrying against a dead socket until the process exits.
+			if conn.IsClosed() {
+				return
+			}
+
 			if !stateManager.GetBabyState(babyUID).GetIsWebsocketAlive() {
+				return
+			}
+
+			// Only a start request is worth repeating. PAUSED/STOPPED are
+			// best-effort teardown signals, sent while the connection is
+			// being closed; retrying them just adds traffic nobody is
+			// waiting on.
+			if streamingStatus != client.Streaming_STARTED {
 				return
 			}
 

@@ -42,6 +42,15 @@ type WebsocketConnection struct {
 	// commands. Reset by any matched response, even a late one: a late
 	// response still proves the request channel works.
 	consecutiveTimeouts int32
+
+	// closed - set once the manager has torn this connection down. Retry
+	// loops hold a *WebsocketConnection captured at spawn time and must stop
+	// when that specific connection dies. Per-baby state (IsWebsocketAlive)
+	// cannot serve as that signal: it flips back to true as soon as the
+	// replacement connection is up, so a stale loop that samples it outside
+	// the brief reconnect window keeps retrying forever against a dead
+	// socket, and the loops accumulate one per reconnect.
+	closed int32
 }
 
 // NewWebsocketConnection - constructor
@@ -62,6 +71,17 @@ func (conn *WebsocketConnection) LastInbound() time.Time {
 // ConsecutiveTimeouts - requests that timed out since the last response
 func (conn *WebsocketConnection) ConsecutiveTimeouts() int32 {
 	return atomic.LoadInt32(&conn.consecutiveTimeouts)
+}
+
+// MarkClosed - records that this connection has been torn down, so retry
+// loops still holding it can notice and stop. Idempotent.
+func (conn *WebsocketConnection) MarkClosed() {
+	atomic.StoreInt32(&conn.closed, 1)
+}
+
+// IsClosed - whether this connection has been torn down
+func (conn *WebsocketConnection) IsClosed() bool {
+	return atomic.LoadInt32(&conn.closed) == 1
 }
 
 // RegisterMessageHandler - registers handler which will be called whenever new message is received
@@ -139,6 +159,15 @@ func (conn *WebsocketConnection) SendRequest(reqType RequestType, requestData *R
 
 		select {
 		case <-timer.C:
+			// Drop the pending handler. handleResponse only deletes entries
+			// it matches, so a request that never gets answered would
+			// otherwise occupy a slot in resHandlers for the lifetime of the
+			// connection — unbounded growth against an unresponsive camera,
+			// where no request is ever answered.
+			conn.resHandlersMu.Lock()
+			delete(conn.resHandlers, id)
+			conn.resHandlersMu.Unlock()
+
 			close(resC)
 			atomic.AddInt32(&conn.consecutiveTimeouts, 1)
 			return nil, errors.New("Request timeout")

@@ -174,6 +174,12 @@ func (app *App) handleBaby(baby baby.Baby, ctx utils.GracefulContext) {
 				if app.Opts.RTMP != nil && app.Opts.RTMP.AutoStart {
 					app.autoStopStreaming(baby.UID, conn)
 				}
+				// Retire the connection last, so the best-effort stop above
+				// still gets its one attempt. Any retry loop still holding
+				// this connection stops at its next check instead of
+				// outliving it — without this, each reconnect leaves another
+				// loop behind and the request rate grows without bound.
+				conn.MarkClosed()
 			}()
 			
 			// Auto-start streaming if RTMP is enabled and auto-start is configured
