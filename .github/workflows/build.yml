@@ -1,0 +1,44 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    name: go build / vet
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nanit_bridge/nanit-src
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: nanit_bridge/nanit-src/go.sum
+
+      # CGO stays on to match the Dockerfile: mattn/go-sqlite3 (history
+      # storage) has no pure-Go build, so CGO_ENABLED=0 fails outright
+      # rather than degrading. Ubuntu runners ship gcc.
+      - name: build
+        env:
+          CGO_ENABLED: '1'
+        run: go build ./...
+
+      - name: vet
+        env:
+          CGO_ENABLED: '1'
+        run: go vet ./...
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
