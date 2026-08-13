@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.2.2
+
+- **Stop streaming retry loops from accumulating across reconnects.**
+  Observed in production (2026-08-12) against an unresponsive camera: the
+  request rate climbed steadily — 12 requests in the first 40-second
+  connection window, 69 by the ninth, over 200/minute after ten minutes —
+  and reset only on add-on restart. `requestLocalStreaming` retries a
+  timed-out start request forever, and its only exit was the per-baby
+  `IsWebsocketAlive` flag. That flag tracks the *newest* connection, so
+  after the liveness monitor recycled a wedged socket it read true again
+  within a second and stale loops never noticed their own connection had
+  died. Every reconnect left another loop behind, each still sending on a
+  dead socket. Connections now carry an explicit closed marker, set when
+  the handler tears down, and a retry loop stops as soon as the connection
+  it was spawned for is retired. Interleaved, out-of-order request IDs in
+  the logs were the tell — each stale connection kept its own counter.
+- **Send teardown streaming commands once.** PAUSED/STOPPED requests are
+  best-effort signals issued while a connection is closing; they were
+  retried on the same infinite loop as a start request, adding traffic
+  nothing was waiting on. They now get a single attempt.
+- **Release pending response handlers on timeout.** `resHandlers` entries
+  were only removed when a matching response arrived, so against a camera
+  that answers nothing every request left a permanent entry — unbounded
+  map growth for the life of the connection, worst exactly when the retry
+  loops were at their most active.
+
 ## 1.2.1
 
 - **Detect the one-way websocket wedge.** Observed in production (2026-07-17):
